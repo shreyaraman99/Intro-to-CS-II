@@ -1,53 +1,47 @@
 #include "provided.h"
 #include <string>
 #include <vector>
-#include <sstream>
+#include <set>
 using namespace std;
 
 class TokenizerImpl
 {
 public:
     TokenizerImpl(string separators);
-    vector<string> tokenize(const string& s) const;
+    vector<string> tokenize(const std::string& s) const;
 private:
-    string m_text;
-    string m_separators;
-    
-    bool isSep(char c) const {
-        string seps(m_separators);
-        for (int i = 0; i < seps.size(); i++)
-            if (seps[i] == c)
-                return true;
-        return false;
-    }
+    set<char> m_tokens;
 };
 
-TokenizerImpl::TokenizerImpl(string separators): m_separators(separators) {}
-
-
-vector<string> TokenizerImpl::tokenize(const string& s) const {
-    stringstream sS(s);
-    string word;
-    vector<string> result;
-    char c;
-    
-    while (sS) {
-        word.clear();
-        
-        while (!isSep((c = sS.get())))
-            word.push_back(c);
-        if (c != EOF)            
-            sS.unget();
-        
-        result.push_back(word);
-        
-        while(isSep((c = sS.get())));
-        if (c != EOF)
-            sS.unget();
-    }
-    return result;
+TokenizerImpl::TokenizerImpl(string separators)
+{
+    for (int i = 0; i < separators.size(); i++)
+        m_tokens.insert(separators[i]);
 }
 
+vector<string> TokenizerImpl::tokenize(const std::string& s) const
+{
+    vector<string> tokenized;
+    set<char>::iterator it;
+    
+    int pos = 0;
+    string token;
+    while (pos != s.size()) {
+        it = m_tokens.find(s[pos]);
+        if (it == m_tokens.end())
+            token += s[pos];
+        else {
+            if (token != "")
+                tokenized.push_back(token);
+            token = "";
+        }
+        pos++;
+    }
+    if (token != "")
+        tokenized.push_back(token);
+    
+    return tokenized;
+}
 
 //******************** Tokenizer functions ************************************
 
