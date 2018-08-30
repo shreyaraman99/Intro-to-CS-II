@@ -1,63 +1,146 @@
 #include "provided.h"
 #include <string>
+#include <list>
+#include <queue>
+#include <cctype>
+#include <iostream>
 using namespace std;
 
 class TranslatorImpl
 {
 public:
+    TranslatorImpl();
     bool pushMapping(string ciphertext, string plaintext);
     bool popMapping();
     string getTranslation(const string& ciphertext) const;
 private:
+    struct Mapping  // helper struct
+    {
+        Mapping()               // Construct non-modified mapping
+        : plainAlphabet{ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+            'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+            'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+            'Y', 'Z' },
+        cipherAlphabet{ '?', '?', '?', '?', '?', '?', '?', '?',
+            '?', '?', '?', '?', '?', '?', '?', '?',
+            '?', '?', '?', '?', '?', '?', '?', '?',
+            '?', '?' }
+        {}
+        
+        Mapping(char ca[26])    // Construct mapping with custom cipher
+        : plainAlphabet{ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+            'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+            'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+            'Y', 'Z' }
+        {
+            for (int i = 0; i < 26; i++)
+                cipherAlphabet[i] = ca[i];
+        }
+        char plainAlphabet[26];
+        char cipherAlphabet[26];
+    };
+    list<Mapping> m_mappings;
 };
+
+TranslatorImpl::TranslatorImpl()
+: m_mappings(1)
+{ }
 
 bool TranslatorImpl::pushMapping(string ciphertext, string plaintext)
 {
-    if (ciphertext.size() != plaintext.size())
+    // Check if ciphertext + plaintext not same length
+    if (ciphertext.length() != plaintext.length())
         return false;
-    for (int i = 0; i < ciphertext.size(); i++)
-        if ( !( (ciphertext[i] >= 'a' && ciphertext[i] <= 'z') || (ciphertext[i] >= 'A' && ciphertext[i] <= 'Z') ) )
+    // Make all letters uppercase
+    string upperCipher, upperPlain;
+    for (int i = 0; i < ciphertext.length(); i++) {
+        upperCipher += toupper(ciphertext[i]);
+        upperPlain += toupper(plaintext[i]);
+    }
+    // Check if any of ciphertext already exists in mapping,
+    // or plaintext doesn't already have something mapped to it
+    queue<char> ciphertextExists;
+    for (int i = 0; i < 26; i++) {
+        if (m_mappings.front().cipherAlphabet[i] != '?')
+            ciphertextExists.push(m_mappings.front().cipherAlphabet[i]);
+    }
+    int s = ciphertextExists.size();
+    for (int i = 0; i < s; i++) {
+        char c = ciphertextExists.front();
+        ciphertextExists.pop();
+        for (int j = 0; j < ciphertext.size(); j++) {
+            if (c == upperCipher[j])
+                return false;
+        }
+    }
+    for (int i = 0; i < plaintext.length(); i++) {
+        int plaintextPos = upperPlain[i] - 65;
+        if (m_mappings.front().cipherAlphabet[plaintextPos] != '?')
             return false;
-    for (int i = 0; i < plaintext.size(); i++)
-        if ( !( (plaintext[i] >= 'a' && plaintext[i] <= 'z') || (plaintext[i] >= 'A' && plaintext[i] <= 'Z') ) )
-            return false;
+    }
+    // Otherwise, make a new mapping and add it to the front of the list
+    char newCipherAlphabet[26];
+    for (int i = 0; i < 26; i++)
+        newCipherAlphabet[i] = m_mappings.front().cipherAlphabet[i];
+    for (int i = 0; i < ciphertext.length(); i++) {
+        int plaintextPos = upperPlain[i] - 65;
+        newCipherAlphabet[plaintextPos] = upperCipher[i];
+    }
+    m_mappings.push_front(newCipherAlphabet);
+    
+    
+    // test
+    //    list<Mapping>::iterator it;
+    //    it = m_mappings.begin();
+    //    while (it != m_mappings.end()) {
+    //        for (int i = 0; i < 26; i++) {
+    //            cout << (*it).plainAlphabet[i] << (*it).cipherAlphabet[i] << endl;
+    //        }
+    //        it++;
+    //        cout << "=====" << endl;
+    //    }
     
     return true;
 }
 
-
 bool TranslatorImpl::popMapping()
 {
-    /*
-     if # of times popMapping() returns true == # of times pushMapping() returns true
-        return false
-     else
-        pop most-recently pushed mapping table
-        make it current mapping table
-        return true
-     */
-    
+    if (m_mappings.size() == 1)
+        return false;
+    m_mappings.pop_front();
     return true;
 }
 
 string TranslatorImpl::getTranslation(const string& ciphertext) const
 {
-    /* The getTranslation() function translates its argument string according to the current
-     mapping table and returns the resulting string of the same length. Each character in the
-     ciphertext argument results in a character appearing in the corresponding position of the
-     result string according to the following:
-     • If the ciphertext character is a letter that maps to a plaintext letter in the current
-     mapping, then that plaintext letter appears, in the same case as in the ciphertext
-     string. (Thus, if DàE in the current mapping, ciphertext D results in E, while
-     ciphertext d results in e.
-     • If the ciphertext character is a letter with an unknown translation in the current
-     mapping, a ? appears.
-     • If the ciphertext character is not a letter, that character appears, unchanged. */
-    
-    return "";
+    string translation;
+    for (int i = 0; i < ciphertext.length(); i++) {
+        // If it's a letter, look up its corresponding plaintext translation
+        if (isalpha(ciphertext[i])) {
+            bool isUpper = false;
+            if (ciphertext[i] <= 90 && ciphertext[i] >= 65)
+                isUpper = true;
+            // Search for according plaintext translation
+            bool isFound = false;
+            for (int j = 0; j < 26; j++) {
+                if (m_mappings.front().cipherAlphabet[j] == toupper(ciphertext[i])) {
+                    isFound = true;
+                    if (isUpper)
+                        translation += m_mappings.front().plainAlphabet[j];
+                    else
+                        translation += tolower(m_mappings.front().plainAlphabet[j]);
+                }
+            }
+            // If not there, add a questionmark
+            if (!isFound)
+                translation += '?';
+        }
+        // Leave non-alpha characters as is
+        else
+            translation += ciphertext[i];
+    }
+    return translation;
 }
-
-
 
 //******************** Translator functions ************************************
 
