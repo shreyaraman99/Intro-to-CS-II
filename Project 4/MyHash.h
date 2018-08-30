@@ -1,10 +1,12 @@
-#ifndef MyHash_h
-#define MyHash_h
+// MyHash.h
 
-#include <vector>
-#include <list>
-#include <functional>
+#ifndef MYHASH_INCLUDED
+#define MYHASH_INCLUDED
+
+#include<iostream>
 using namespace std;
+
+const int DEFAULT_MAX_BUCKETS = 100;
 
 template<typename KeyType, typename ValueType>
 class MyHash
@@ -16,7 +18,6 @@ public:
     void associate(const KeyType& key, const ValueType& value);
     int getNumItems() const;
     double getLoadFactor() const;
-    
     // for a map that can't be modified, return a pointer to const ValueType
     const ValueType* find(const KeyType& key) const;
     
@@ -30,206 +31,180 @@ public:
     MyHash(const MyHash&) = delete;
     MyHash& operator=(const MyHash&) = delete;
     
+    
 private:
-    
-    double m_maxLoad;
-    double m_loadFactor;
-    int m_bucketSize;
-    int m_numItems;
-    
-    struct Node {
-        KeyType m_key;
-        ValueType m_value;
+    struct Node
+    {
+        KeyType key;
+        ValueType value;
         Node* next;
     };
-
-    Node** hashTable;
-    Node* head;
-    Node* tail;
-    Node* curr;
-    
-    unsigned int HashCode(int h) const {
-        return h % m_bucketSize;
-    }
+    double  m_maxLoadFactor;
+    Node**  buckets;
+    int     m_numBuckets;
+    int     m_numItems;
 };
 
-
-#endif /* MyHash_h */
-
-
-
-
-template <class KeyType, class ValueType>
-MyHash<KeyType, ValueType>::MyHash(double maxLoadFactor) : m_numItems(0), m_bucketSize(100), tail(NULL), head(NULL){
-
-    m_loadFactor = (m_numItems / m_bucketSize) * 1.0;
+template<typename KeyType, typename ValueType>
+MyHash<KeyType, ValueType>::MyHash(double maxLoadFactor)
+{
     if (maxLoadFactor <= 0)
-        m_maxLoad = 0.5;
-    else if (maxLoadFactor > 2)
-        m_maxLoad = 2.0;
+        m_maxLoadFactor = 0.5;
+    else if (maxLoadFactor > 2.0)
+        m_maxLoadFactor = 2.0;
     else
-        m_maxLoad = maxLoadFactor;
+        m_maxLoadFactor = maxLoadFactor;
     
-    hashTable = new Node*[m_bucketSize];
-    for (int i = 0; i < m_bucketSize; i++)
-        hashTable[i] = NULL;
+    m_numBuckets = DEFAULT_MAX_BUCKETS;
+    
+    buckets = new Node*[m_numBuckets];
+    for (int i = 0; i < DEFAULT_MAX_BUCKETS; i++)
+        buckets[i] = nullptr;
+    
+    m_numItems = 0;
 }
 
-template <class KeyType, class ValueType>
-MyHash<KeyType, ValueType>::~MyHash() {
-
-    Node* temp;
-    Node* tempNext;
-    for (int i = 0; i < m_numItems; i++) {
-        temp = hashTable[i];
-        while (temp != nullptr) {
-            tempNext = temp->next;
-            delete temp;
-            temp = tempNext;
+template<typename KeyType, typename ValueType>
+MyHash<KeyType, ValueType>::~MyHash()
+{
+    for (int i = 0; i < m_numBuckets; i++) {
+        Node* p = buckets[i];
+        while (p != nullptr) {
+            Node* deleteMe = p;
+            p = p->next;
+            delete deleteMe;
         }
-        hashTable[i] = nullptr;
     }
-    
-    delete hashTable;
+    delete[] buckets;
 }
 
-template <class KeyType, class ValueType>
-void MyHash<KeyType, ValueType>::reset() {
-    
-    Node* temp;
-    Node* tempNext;
-    for (int i = 0; i < m_numItems; i++) {
-        temp = hashTable[i];
-        while (temp != nullptr) {
-            tempNext = temp->next;
-            delete temp;
-            temp = tempNext;
+template<typename KeyType, typename ValueType>
+void MyHash<KeyType, ValueType>::reset()
+{
+    for (int i = 0; i < m_numBuckets; i++) {
+        Node* p = buckets[i];
+        while (p != nullptr) {
+            Node* deleteMe = p;
+            p = p->next;
+            delete deleteMe;
         }
-        hashTable[i] = nullptr;
     }
+    delete[] buckets;
     
-    delete hashTable;
-
-    hashTable = new Node*[100];
-    for (int i = 0; i < 100; i++)
-        hashTable[i] = NULL;
+    m_numItems = 0;
+    m_numBuckets = DEFAULT_MAX_BUCKETS;
+    buckets = new Node*[m_numBuckets];
+    for (int i = 0; i < m_numBuckets; i++)
+        buckets[i] = nullptr;
 }
 
-template <class KeyType, class ValueType>
-void MyHash<KeyType, ValueType>::associate(const KeyType &key, const ValueType &value) {
-    
+template<typename KeyType, typename ValueType>
+void MyHash<KeyType, ValueType>::associate(const KeyType& key, const ValueType& value)
+{
     unsigned int hash(const KeyType& k);
-    unsigned int h = hash(key);
-    unsigned int code = HashCode(h);    // gets hash code for key
-    
-    if (hashTable[code] == NULL) {      // if there is no item there, add new linked list
-        Node* newNode = new Node();     // create new node and add it into the list
-        newNode->m_key = key;
-        newNode->m_value = value;
-        newNode->next = NULL;
-        
-        hashTable[code] = newNode;
-        
-        if (head != NULL)               // this is not the first item added
-            tail->next = newNode;       // add a copy of that pointer into the back of our separate linked list
-        else                            // this is the first item added
-            head = newNode;             // head now points to the new node
-        tail = newNode;                 // update tail pointer (if linked list was empty, tail is set to the first key
-        
-        m_numItems++;                   // increment item count
-    }
-    else {                                                      // slot is occupied
-        Node* temp = hashTable[code];
-        
-        while (temp->m_key != key && temp->next != NULL)        // check if key is already there
-            temp = temp->next;
-        
-        if (temp->next == NULL && temp->m_key != key) {
-            Node* newNode = new Node();
-            newNode->m_key = key;
-            newNode->m_value = value;
-            newNode->next = NULL;
-            
-            temp->next = newNode;           // add new node to the end of list
-            tail->next = newNode;           // add copy of that pointer into separate linked list
-            tail = newNode;
-            
-            m_numItems++;                   // increment item count
-        }
-        else {                              // temp's m_key matches key
-            temp->m_value = value;          // if the key is still there, update value
-        }
+    // Check if key is already in hash table, and update if it is
+    ValueType* valInHash = find(key);
+    if (valInHash != nullptr) {
+        *valInHash = value;
+        return;
     }
     
-    m_loadFactor = (m_numItems / m_bucketSize) * 1.0;
-    if (m_loadFactor > m_maxLoad) {
-        m_bucketSize = m_bucketSize * 2;
-        Node** newhash = new Node*[m_bucketSize];   // create temp table
+    // Check if inserting new node would cause loadfactor to exceed maximum
+    double updatedLF = (getNumItems() + 1) / (m_numBuckets * 1);
+    if (updatedLF >= m_maxLoadFactor || getLoadFactor() == m_maxLoadFactor) {
+        // Make copies of old data
+        int prevSize = m_numBuckets;
+        Node **prevTable = buckets;
         
-        for (int i = 0; i < m_bucketSize; i++)
-            newhash[i] = nullptr;
+        // New table
+        m_numBuckets *= 2;
+        buckets = new Node*[m_numBuckets];
+        for (int i = 0; i < m_numBuckets; i++)
+            buckets[i] = nullptr;
         
-        const Node* n;
-        // fill in table with old info
-        for (int i = 0; i < m_bucketSize / 2; i++) {
-            n = hashTable[i];
-            while (n != nullptr) {
-                // initialize new node
-                Node* tnode = new Node;
-                tnode->m_key = n->m_key;
-                tnode->m_value = n->m_value;
-                tnode->next = nullptr;
-                Node*& bucket = newhash[hash(n->m_key) / m_bucketSize];
-                tnode->next = bucket;
-                bucket = tnode;
-                n = n->next;
+        // Copy over data into new hash table
+        for (int h = 0; h < prevSize; h++) {
+            if (prevTable[h] != nullptr) {
+                Node* deleteMe;
+                Node* entry = prevTable[h];
+                while (entry != nullptr) {
+                    // Get hash + bucket
+                    unsigned int h = hash(entry->key);
+                    int bucket = h % m_numBuckets;
+                    
+                    // Insert new node into bucket
+                    Node* newNode = new Node;
+                    newNode->value = entry->value;
+                    newNode->key = entry->key;
+                    newNode->next = buckets[bucket];
+                    buckets[bucket] = newNode;
+                    
+                    // Delete old entry
+                    deleteMe = entry;
+                    entry = entry->next;
+                    delete deleteMe;
+                }
             }
         }
-        
-        // delete links
-        for (int i = 0; i < m_bucketSize / 2; i++) {
-            Node *curr = hashTable[i];
-            Node *next;
-            while ( curr != nullptr ) {
-                next = curr->next;
-                delete curr;
-                curr = next;
-            }
-        }
-        
-        delete []hashTable;
-        hashTable = newhash;
+        delete[] prevTable;
     }
+    
+    // Get hash + bucket for item to associate
+    unsigned int h = hash(key);
+    int bucket = h % m_numBuckets;
+    
+    // Insert new node into bucket
+    Node* newNode = new Node;
+    newNode->value = value;
+    newNode->key = key;
+    newNode->next = buckets[bucket];
+    buckets[bucket] = newNode;
+    m_numItems++;
 }
 
-
-template <class KeyType, class ValueType>
-const ValueType* MyHash<KeyType, ValueType>::find(const KeyType& key) const {
-
+template<typename KeyType, typename ValueType>
+const ValueType* MyHash<KeyType, ValueType>::find(const KeyType& key) const
+{
+    // Get hash + bucket
     unsigned int hash(const KeyType& k);
     unsigned int h = hash(key);
-    unsigned int code = HashCode(h);    // gets hash code for key
-    Node* temp = hashTable[code];
+    int bucket = h % m_numBuckets;
     
-    if (temp == NULL)
-        return NULL;
-    else {
-        while (temp->m_key != key) {
-            if (temp->next == NULL)
-                return NULL;
-            temp = temp->next;
+    // Iterate through that bucket to find value
+    Node* p = buckets[bucket];
+    while (p != nullptr) {
+        if (p->key == key) {
+            ValueType* value = &(p->value);
+            return value;
         }
-        return &(temp->m_value);
+        p = p->next;
     }
+    return nullptr;
 }
 
-template <class KeyType, class ValueType>
-int MyHash<KeyType, ValueType>::getNumItems() const {
+template<typename KeyType, typename ValueType>
+int MyHash<KeyType, ValueType>::getNumItems() const
+{
     return m_numItems;
 }
 
-template <class KeyType, class ValueType>
-double MyHash<KeyType, ValueType>::getLoadFactor() const {
-    return m_loadFactor;
+template<typename KeyType, typename ValueType>
+double MyHash<KeyType, ValueType>::getLoadFactor() const
+{
+    return (getNumItems() / (m_numBuckets * 1.0));
 }
 
+//template<typename KeyType, typename ValueType>
+//void MyHash<KeyType, ValueType>::printBucketContents() const
+//{
+//    for (int i = 0; i < m_numBuckets; i++) {
+//        Node* p = buckets[i];
+//        while (p != nullptr) {
+//            cout << "in bucket " << i << endl;
+//            for (int i = 0; i < (p->value).size(); i++)
+//                cout << p->key << " " << p->value[i] << endl;
+//            p = p->next;
+//        }
+//    }
+//}
+#endif // MYHASH_INCLUDED
