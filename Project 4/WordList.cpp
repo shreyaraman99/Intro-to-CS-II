@@ -1,11 +1,11 @@
 #include "provided.h"
-#include <string>
-#include <vector>
 #include "MyHash.h"
+#include <string>
+#include <cctype>
+#include <vector>
+#include <functional>
 #include <iostream>
 #include <fstream>
-#include <string>
-#include <vector>
 using namespace std;
 
 class WordListImpl
@@ -15,102 +15,136 @@ public:
     bool contains(string word) const;
     vector<string> findCandidates(string cipherWord, string currTranslation) const;
 private:
-    vector<string> goodWords;
-    MyHash<int, vector<string>> hashT;
-    int makePattern(string s) const {
-        int pattern = 0;
-        int j = 0;
-        MyHash<char, int> letterToNumber;
-        for (int i = 0; i < s.size(); i++, j++) {
-            if (letterToNumber.find(s[i]) != nullptr)
-                pattern = (pattern * 10) + (*letterToNumber.find(s[i]));
-            else
-                letterToNumber.associate(s[i], j);
-        }
-        return pattern;
-    }
+    MyHash<string, vector<string>> stringsToPatterns;
+    string getLetterPattern(string word) const;
     
 };
 
 bool WordListImpl::loadWordList(string filename)
 {
-    ifstream infile(filename);    // infile is a name of our choosing
-    if (!infile)		        // Did opening the file fail?
-    {
-        cerr << "Error: Cannot open wordlist.txt!" << endl;     // return with failure
+    // Clear the hash table each time this is called
+    stringsToPatterns.reset();
+    
+    // Find file and read in each string
+    ifstream infile(filename);
+    if ( ! infile ) {
+        cerr << "Error: Cannot open " << filename << endl;
         return false;
     }
-    
-    hashT.reset();
-    
     string s;
-    while (getline(infile, s))
-    {
-        for (int i = 0; i < s.size(); i++)
-            if ( !( (s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') ) && s[i] != 39 )
-                break;
-            else {
-                goodWords.push_back(s);
-                hashT.associate(makePattern(s), goodWords);
+    while (getline(infile, s)) {
+        // Check if string should be inserted into hash table
+        bool insertIntoMap = true;
+        string lowerCaseWord = "";
+        for (int i = 0; i < s.length(); i++) {
+            if (!isalpha(s[i]) && s[i] != 39)
+                insertIntoMap = false;
+            else
+                lowerCaseWord += tolower(s[i]);
+        }
+        if (insertIntoMap) {
+            // Create letter pattern and store in hash table
+            vector<string> words;
+            string pattern = getLetterPattern(lowerCaseWord);
+            if (stringsToPatterns.find(pattern) == nullptr) {
+                words.push_back(lowerCaseWord);
+                stringsToPatterns.associate(pattern, words);
             }
+            else
+                stringsToPatterns.find(pattern)->push_back(lowerCaseWord);
+        }
     }
     return true;
-
 }
 
 bool WordListImpl::contains(string word) const
 {
+    string pattern = getLetterPattern(word);
+    if (stringsToPatterns.find(pattern) == nullptr)
+        return false;
+    string lowerCaseWord;
     for (int i = 0; i < word.size(); i++)
-        word[i] = tolower(word[i]);
-    
-    if (hashT.find(makePattern(word)) != nullptr)
-        return true;
+        lowerCaseWord += tolower(word[i]);
+    vector<string> candidates = *stringsToPatterns.find(pattern);
+    for (auto it = candidates.begin(); it != candidates.end(); it++)
+        if (*it == lowerCaseWord)
+            return true;
     return false;
 }
 
 vector<string> WordListImpl::findCandidates(string cipherWord, string currTranslation) const
 {
+    // Create an empty vector and a vector of candidate strings
+    vector<string> candidates;
+    vector<string> empty;
     
-    if (currTranslation.size() != cipherWord.size())
-        return vector<string>();
-    
-    for (int i = 0; i < cipherWord.size(); i++) {
-        if ( !( (cipherWord[i] >= 'a' && cipherWord[i] <= 'z') || (cipherWord[i] >= 'A' && cipherWord[i] <= 'Z') ) && cipherWord[i] != 39 )
-            return vector<string>();
+    // Check that translation + cipher are same length
+    if (cipherWord.length() != currTranslation.length())
+        return empty;
+    // Check that cipherword and translation only have letters, apostrophes, and question marks
+    for (int i = 0; i < cipherWord.length(); i++) {
+        if (!isalpha(cipherWord[i]) && cipherWord[i] != 39)
+            return empty;
+        if (!isalpha(currTranslation[i]) && currTranslation[i] != 39 && currTranslation[i] != '?')
+            return empty;
     }
+    // Get letter pattern for cipher word
+    string pattern = getLetterPattern(cipherWord);
     
-    for (int i = 0; i < currTranslation.size(); i++) {
-        if ( !( (currTranslation[i] >= 'a' && currTranslation[i] <= 'z') || (currTranslation[i] >= 'A' && currTranslation[i] <= 'Z') ) && currTranslation[i] != 39 && currTranslation[i] != '?')
-            return vector<string>();
-    }
-    
-
-    
-    for (int i = 0; i < hashT.getNumItems(); i++) {
-        for (int j = 0; j < currTranslation.size(); j++) {
-            if ( (currTranslation[j] >= 'a' && currTranslation[j] <= 'z') || (currTranslation[j] >= 'A' && currTranslation[j] <= 'Z') ) {
-                if ( !(cipherWord[j] >= 'a' && cipherWord[j] <= 'z') || (cipherWord[j] >= 'A' && cipherWord[j] <= 'Z'))
-                    return vector<string>();
+    // Return strings in word list with matching letter patterns
+    if (stringsToPatterns.find(pattern) == nullptr)
+        return empty;
+    else {
+        // Parse through each of the i strings returned in vector of possible words
+        // that map to that letter pattern
+        for (int i = 0; i < stringsToPatterns.find(pattern)->size(); i++) {
+            bool addCandidate = true;
+            string candidate = stringsToPatterns.find(pattern)->operator[](i);
+            // Rule out possible strings not consistent with current translation
+            for (int j = 0; j < candidate.length(); j++) {
+                if (isalpha(currTranslation[j])) {
+                    if (tolower(currTranslation[j]) != tolower(candidate[j]))
+                        addCandidate = false;
+                    if (!(isalpha(cipherWord[j]))) {
+                        return empty;
+                    }
+                }
+                if (currTranslation[j] == '?') {
+                    if (!isalpha(cipherWord[j])) {
+                        return empty;
+                    }
+                }
+                if (currTranslation[j] == 39) {
+                    if (cipherWord[j] != 39 || candidate[j] != 39) {
+                        return empty;
+                    }
+                }
             }
-            else if (currTranslation[j] == '?') {
-                if ( !(cipherWord[j] >= 'a' && cipherWord[j] <= 'z') || (cipherWord[j] >= 'A' && cipherWord[j] <= 'Z'))
-                    return vector<string>();
-            }
-            else if (currTranslation[j] == 39) {
-                if (cipherWord[j] != 39)
-                    return vector<string>();
+            if (addCandidate) {
+                candidates.push_back(candidate);
             }
         }
     }
-    
-    for (int i = 0; i < cipherWord.size(); i++)
-        cipherWord[i] = tolower(cipherWord[i]);
-    
-    vector<string> matches;
-    if (hashT.find(makePattern(cipherWord)) != nullptr)
-        matches = *hashT.find(makePattern(cipherWord));
+    // Return the vector of any strings that could be the translation of cipherWord
+    // consistent with the current translation
+    return candidates;
+}
 
-    return matches;
+string WordListImpl::getLetterPattern(string word) const
+{
+    string pattern;
+    int count = 0;
+    MyHash<char, char> storePattern;
+    for (int i = 0; i < word.length(); i++) {
+        if (storePattern.find(tolower(word[i])) == nullptr) {
+            storePattern.associate(tolower(word[i]), '0' + count);
+            pattern += *storePattern.find(tolower(word[i]));
+            count++;
+        }
+        else
+            pattern += *storePattern.find(tolower(word[i]));
+    }
+    return pattern;
 }
 
 //***** hash functions for string, int, and char *****
